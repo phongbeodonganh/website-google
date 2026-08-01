@@ -1,0 +1,95 @@
+import { prisma } from "@/lib/prisma";
+import type { LocalSearchResponse, Advertiser, Creative } from "@/types/ad-intelligence";
+
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const q = (searchParams.get("q") ?? "").trim();
+
+    if (!q) {
+      const empty: LocalSearchResponse = {
+        kpis: { advertisersCount: 0, adsCount: 0 },
+        advertisers: [],
+        creatives: [],
+      };
+      return new Response(JSON.stringify(empty), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    const advertisers = await prisma.advertiser.findMany({
+      where: {
+        OR: [
+          { advertiserId: q },
+          { name: { contains: q, mode: "insensitive" } },
+          { domain: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+    });
+
+    const creatives = await prisma.adCreative.findMany({
+      where: {
+        OR: [
+          { adId: q },
+          { advertiserId: q },
+          { advertiserName: { contains: q, mode: "insensitive" } },
+          { headline: q ? { contains: q, mode: "insensitive" } : undefined },
+          { bodyText: q ? { contains: q, mode: "insensitive" } : undefined },
+        ].filter(Boolean) as any,
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+      include: {
+        advertiser: false,
+      },
+    });
+
+    const kpis = {
+      advertisersCount: advertisers.length,
+      adsCount: creatives.length,
+    };
+
+    const payload: LocalSearchResponse = {
+      kpis,
+      advertisers: (advertisers ?? []).map((a: any): Advertiser => ({
+        advertiserId: a.advertiserId,
+        name: a.name,
+        domain: a.domain,
+        verifiedStatus: a.verifiedStatus,
+        activeAdsCount: a.activeAdsCount,
+        totalAdsCount: a.totalAdsCount,
+        targetRegions: a.targetRegions ?? [],
+      })),
+      creatives: (creatives ?? []).map((c: any): Creative => ({
+        adId: c.adId,
+        advertiserId: c.advertiserId,
+        advertiserName: c.advertiserName,
+        format: c.format,
+        status: c.status,
+        headline: c.headline,
+        bodyText: c.bodyText,
+        mediaUrl: c.mediaUrl,
+        firstSeen: c.firstSeen.toISOString(),
+        lastSeen: c.lastSeen.toISOString(),
+        longevityDays: c.longevityDays,
+        targetCountries: c.targetCountries ?? [],
+      })),
+    };
+
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: "Local search failed", detail: (e as Error).message }),
+      {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  }
+}

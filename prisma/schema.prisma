@@ -1,0 +1,71 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Advertiser {
+  id             String       @id @default(uuid())
+  advertiserId   String       @unique
+  name           String
+  domain         String?
+  verifiedStatus Boolean      @default(false)
+  isTracked      Boolean      @default(false)
+  activeAdsCount Int          @default(0)
+  totalAdsCount  Int          @default(0)
+  targetRegions  String[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  creatives      AdCreative[]
+}
+
+model SearchSnapshot {
+  id            String       @id @default(uuid())
+  query         String
+  country       String
+  source        String       @default("serpapi")
+  targetDomain  String?
+  totalResults  Int          @default(0)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  creatives     AdCreative[]
+
+  @@unique([query, country, source])
+  @@index([query])
+  @@index([country])
+}
+
+model AdCreative {
+  id              String         @id @default(uuid())
+  adId            String         @unique
+  advertiserId    String
+  advertiser      Advertiser     @relation(fields: [advertiserId], references: [advertiserId], onDelete: Cascade)
+  advertiserName  String
+  format          String         // 'SEARCH' | 'DISPLAY' | 'YOUTUBE' | 'SHOPPING'
+  status          String         // 'ACTIVE' | 'INACTIVE'
+  headline        String?
+  bodyText        String?        @db.Text
+  mediaUrl        String?
+  detailsLink     String?
+  targetDomain    String?
+  width           Int?
+  height          Int?
+  firstSeen       DateTime
+  lastSeen        DateTime
+  longevityDays   Int            // Số ngày QC duy trì: lastSeen - firstSeen
+  totalDaysShown  Int?
+  targetCountries String[]
+  isTracked       Boolean        @default(false)
+  searchSnapshotId String?
+  searchSnapshot  SearchSnapshot? @relation(fields: [searchSnapshotId], references: [id], onDelete: SetNull)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([advertiserId])
+  @@index([format])
+  @@index([status])
+  @@index([searchSnapshotId])
+}
